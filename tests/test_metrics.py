@@ -80,6 +80,48 @@ class TestLRMES:
         lrmes_high = calc_lrmes(bank_high_beta, idx)
         assert lrmes_high > lrmes_low, f"Expected high beta LRMES > low: {lrmes_high:.4f} vs {lrmes_low:.4f}"
 
+    def test_lrmes_formula_correctness(self):
+        """
+        LRMES = 1 - exp(log(1-D) * beta_OLS).
+        For a bank with known OLS beta, verify the exact closed-form result.
+        The old formula (rho * beta * sqrt(h)) was ~5-10x higher than correct.
+        """
+        rng = np.random.default_rng(99)
+        n = 500
+        sigma_m = 0.01
+        idx = pd.Series(rng.normal(0, sigma_m, n),
+                        index=pd.date_range("2020-01-01", periods=n, freq="B"))
+        # Construct bank with true beta ≈ 1.5 (low noise)
+        true_beta = 1.5
+        bank = pd.Series(true_beta * idx.values + rng.normal(0, 0.0005, n), index=idx.index)
+
+        lrmes = calc_lrmes(bank, idx, market_drop=0.40)
+
+        # Expected: 1 - exp(log(0.6) * 1.5) ≈ 0.535
+        expected = 1 - np.exp(np.log(0.60) * true_beta)
+        assert abs(lrmes - expected) < 0.05, (
+            f"LRMES {lrmes:.4f} far from expected {expected:.4f}; "
+            "formula may still include incorrect rho or sqrt(h) factors"
+        )
+
+    def test_lrmes_realistic_range_for_gsib(self):
+        """
+        For typical G-SIB parameters (beta 0.8–2.5, D=40%), LRMES should
+        fall in [0.15, 0.75] — the range consistent with NYU V-Lab data.
+        The old formula produced values of 0.80–0.97 for the same inputs.
+        """
+        rng = np.random.default_rng(42)
+        n = 300
+        idx = pd.Series(rng.normal(0, 0.012, n),
+                        index=pd.date_range("2022-01-01", periods=n, freq="B"))
+        # Bank with beta ≈ 1.3 (typical large US bank vs S&P 500)
+        bank = pd.Series(1.3 * idx.values + rng.normal(0, 0.006, n), index=idx.index)
+        lrmes = calc_lrmes(bank, idx)
+        assert 0.15 <= lrmes <= 0.75, (
+            f"LRMES {lrmes:.4f} outside realistic G-SIB range [0.15, 0.75]; "
+            "check for incorrect rho * sqrt(h) inflation"
+        )
+
 
 # ---------------------------------------------------------------------------
 # CoVaR tests
