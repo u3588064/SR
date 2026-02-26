@@ -77,42 +77,41 @@ def run_pipeline(
             f"({', '.join(failed_banks)})"
         )
 
-    if all_results:
-        snapshot_dates = sorted(
-            set().union(*[set(v.keys()) for v in all_results.values()])
-        )
-        for snap_date in snapshot_dates:
-            day_data = {
-                bid: metrics[snap_date]
-                for bid, metrics in all_results.items()
-                if snap_date in metrics
-            }
-            if day_data:
-                # Add SRISK shares for the day
-                srisk_vals = {bid: day_data[bid].get("srisk_usd_bn", float("nan"))
-                              for bid in day_data}
-                shares = calc_srisk_shares(srisk_vals)
-                sys_srisk = system_srisk(srisk_vals)
-                for bid in day_data:
-                    day_data[bid]["srisk_share_pct"] = shares.get(bid, 0.0)
-                publish_snapshot(snap_date, day_data, sys_srisk)
-
-        # Update latest.json from target_date
-        target_str = target_date.isoformat()
-        latest_data = {
-            bid: metrics.get(target_str, {})
+    snapshot_dates = sorted(
+        set().union(*[set(v.keys()) for v in all_results.values()])
+    )
+    for snap_date in snapshot_dates:
+        day_data = {
+            bid: metrics[snap_date]
             for bid, metrics in all_results.items()
-            if target_str in metrics
+            if snap_date in metrics
         }
-        if latest_data:
-            srisk_vals = {bid: v.get("srisk_usd_bn", float("nan"))
-                          for bid, v in latest_data.items()}
+        if day_data:
+            # Add SRISK shares for the day
+            srisk_vals = {bid: day_data[bid].get("srisk_usd_bn", float("nan"))
+                          for bid in day_data}
             shares = calc_srisk_shares(srisk_vals)
             sys_srisk = system_srisk(srisk_vals)
-            for bid in latest_data:
-                latest_data[bid]["srisk_share_pct"] = shares.get(bid, 0.0)
-            publish_latest(target_date, latest_data, sys_srisk)
-            logger.info(f"Published latest.json for {target_str}")
+            for bid in day_data:
+                day_data[bid]["srisk_share_pct"] = shares.get(bid, 0.0)
+            publish_snapshot(snap_date, day_data, sys_srisk)
+
+    # Update latest.json from target_date
+    target_str = target_date.isoformat()
+    latest_data = {
+        bid: metrics.get(target_str, {})
+        for bid, metrics in all_results.items()
+        if target_str in metrics
+    }
+    if latest_data:
+        srisk_vals = {bid: v.get("srisk_usd_bn", float("nan"))
+                      for bid, v in latest_data.items()}
+        shares = calc_srisk_shares(srisk_vals)
+        sys_srisk = system_srisk(srisk_vals)
+        for bid in latest_data:
+            latest_data[bid]["srisk_share_pct"] = shares.get(bid, 0.0)
+        publish_latest(target_date, latest_data, sys_srisk)
+        logger.info(f"Published latest.json for {target_str}")
 
     logger.info("Pipeline complete.")
 
