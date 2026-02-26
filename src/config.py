@@ -63,7 +63,7 @@ class Config:
     """Seconds to sleep between Yahoo Finance requests to avoid rate-limiting."""
 
     # ── MCP Server ───────────────────────────────────────────────────────
-    mcp_host: str = _str("MCP_HOST", "0.0.0.0")
+    mcp_host: str = _str("MCP_HOST", "127.0.0.1")
     mcp_port: int = _int("MCP_PORT", 8000)
 
     # ── GitHub (for remote data URL in MCP) ─────────────────────────────

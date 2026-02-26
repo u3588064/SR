@@ -24,7 +24,6 @@ import json
 import logging
 import os
 import sys
-from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 
@@ -38,6 +37,7 @@ from mcp.server.sse import SseServerTransport
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from src.config import cfg
 from src.universe import BANKS, BANK_BY_ID, REGIONS
+from src.utils import is_valid_date
 
 logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
@@ -63,8 +63,16 @@ DATA_DIR = Path(cfg.data_dir)
 def _load_json(rel_path: str) -> dict | None:
     """Load JSON from local data dir or GitHub raw URL."""
     local = DATA_DIR / rel_path
-    if local.exists():
-        with open(local, encoding="utf-8") as f:
+    # Prevent path traversal: ensure the resolved path stays inside DATA_DIR
+    try:
+        resolved = local.resolve()
+        data_root = DATA_DIR.resolve()
+        resolved.relative_to(data_root)
+    except ValueError:
+        logger.warning(f"Blocked path traversal attempt: {rel_path!r}")
+        return None
+    if resolved.exists():
+        with open(resolved, encoding="utf-8") as f:
             return json.load(f)
 
     base = cfg.raw_base_url()
@@ -214,6 +222,8 @@ def get_srisk_ranking(
         Ranked list of banks by SRISK with key metrics.
     """
     if date:
+        if not is_valid_date(date):
+            return {"error": f"Invalid date format '{date}'. Expected YYYY-MM-DD."}
         payload = _load_json(f"history/{date}.json")
         if payload is None:
             return {"error": f"No snapshot found for {date}."}
@@ -270,6 +280,8 @@ def get_delta_covar_ranking(
         Ranked list with ΔCoVaR and CoVaR values.
     """
     if date:
+        if not is_valid_date(date):
+            return {"error": f"Invalid date format '{date}'. Expected YYYY-MM-DD."}
         payload = _load_json(f"history/{date}.json")
         if payload is None:
             return {"error": f"No snapshot for {date}."}

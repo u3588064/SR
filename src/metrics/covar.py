@@ -33,11 +33,14 @@ Outputs:
     ΔCoVaR : float (incremental systemic risk contribution)
 """
 
+import logging
 import numpy as np
 import pandas as pd
 import warnings
 
 from src.config import cfg
+
+logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -172,8 +175,8 @@ def _quantile_regression(x: np.ndarray, y: np.ndarray, q: float) -> tuple[float,
             res = qr.fit(q=q, max_iter=1000)
         params = res.params
         return float(params[0]), float(params[1])
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug(f"QuantReg failed, falling back to SGD: {e}")
 
     # Lightweight fallback: subgradient method
     return _pinball_sgd(X, y, q)
