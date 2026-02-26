@@ -217,8 +217,9 @@ def main():
     if args.start:
         start = date.fromisoformat(args.start)
     else:
-        # Default: covar_window + 30 buffer days before target
-        start = target - timedelta(days=cfg.covar_window + 30)
+        # Default: convert covar_window (trading days) to calendar days (~7/5 ratio)
+        # and add a 30-day holiday/buffer, so we always have enough trading days.
+        start = target - timedelta(days=int(cfg.covar_window * 1.5) + 30)
 
     bank_ids = [b.strip().upper() for b in args.banks.split(",")] if args.banks else None
 
