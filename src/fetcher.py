@@ -170,6 +170,12 @@ def fetch_market_cap_series(bank: Bank, start: str, end: str) -> pd.Series:
     if not shares:
         logger.warning(f"No shares outstanding for {bank.id}")
         return pd.Series(dtype=float)
+
+    # yfinance returns share counts for HK-listed stocks as ~100× the actual
+    # number of individual shares (board-lot unit inflation).  Correct it here.
+    if bank.yf_ticker.endswith(".HK"):
+        shares = shares / 100
+
     mcap = prices * shares / 1e9  # convert to billions
 
     # FX conversion to USD for non-USD listed banks
@@ -183,21 +189,22 @@ def _to_usd(series: pd.Series, ticker: str) -> pd.Series:
     Convert a price series to USD. Only handles common currency suffixes.
     .L → GBX (pence) → GBP → USD
     .HK → HKD → USD
-    .PA .MI .AS .MC → EUR → USD
+    .PA .MI .AS .MC .DE → EUR → USD
     .SW → CHF → USD
-    .T → JPY → USD
+    .T → JPY → USD  (uses JPYUSD=X which gives USD per JPY ≈ 0.0065)
     .SS .SZ → CNY → USD
     """
     fx_pairs = {
-        ".L":  ("GBP=X", 0.01),   # also GBX→GBP factor
-        ".HK": ("HKD=X", 1.0),
+        ".L":  ("GBP=X",    0.01),   # GBX (pence) → GBP factor, then → USD
+        ".HK": ("HKD=X",    1.0),
         ".PA": ("EURUSD=X", 1.0),
         ".MI": ("EURUSD=X", 1.0),
         ".AS": ("EURUSD=X", 1.0),
         ".MC": ("EURUSD=X", 1.0),
         ".DE": ("EURUSD=X", 1.0),
-        ".SW": ("CHF=X", 1.0),
-        ".T":  ("JPY=X", 1.0),
+        ".SW": ("CHF=X",    1.0),
+        # JPY=X returns JPY-per-USD (~155); use JPYUSD=X for USD-per-JPY (~0.0065)
+        ".T":  ("JPYUSD=X", 1.0),
         ".SS": ("CNYUSD=X", 1.0),
     }
     for suffix, (fx_ticker, factor) in fx_pairs.items():
@@ -214,6 +221,48 @@ def _to_usd(series: pd.Series, ticker: str) -> pd.Series:
                     return series * factor * fx_rate
             except Exception as e:
                 logger.warning(f"FX conversion failed for {ticker}: {e}")
+    return series  # already USD or conversion failed
+
+
+def _to_usd_bs(series: pd.Series, ticker: str) -> pd.Series:
+    """
+    Convert balance-sheet values (in native reporting currency, already in
+    billions) to USD billions.
+
+    Differs from _to_usd in two ways:
+      1. No pence factor for .L stocks — balance sheets are in GBP, not GBX.
+      2. Uses CNYUSD=X for .HK tickers — HK-listed Chinese banks report
+         their financials in CNY (renminbi), not HKD.
+    """
+    bs_fx_pairs = {
+        ".L":  ("GBP=X",    1.0),    # GBP (not pence) → USD
+        ".HK": ("CNYUSD=X", 1.0),    # CN banks report in CNY
+        ".PA": ("EURUSD=X", 1.0),
+        ".MI": ("EURUSD=X", 1.0),
+        ".AS": ("EURUSD=X", 1.0),
+        ".MC": ("EURUSD=X", 1.0),
+        ".DE": ("EURUSD=X", 1.0),
+        ".SW": ("CHF=X",    1.0),
+        ".T":  ("JPYUSD=X", 1.0),    # JPY → USD (direct rate)
+        ".SS": ("CNYUSD=X", 1.0),
+    }
+    if series.empty:
+        return series
+    for suffix, (fx_ticker, factor) in bs_fx_pairs.items():
+        if ticker.endswith(suffix):
+            try:
+                yf = _yf()
+                start_dt = series.index[0].strftime("%Y-%m-%d")
+                end_dt = (series.index[-1] + timedelta(days=3)).strftime("%Y-%m-%d")
+                fx = yf.download(fx_ticker, start=start_dt, end=end_dt,
+                                 auto_adjust=True, progress=False, threads=False)
+                if not fx.empty:
+                    if isinstance(fx.columns, pd.MultiIndex):
+                        fx.columns = fx.columns.droplevel(1)
+                    fx_rate = fx["Close"].reindex(series.index, method="ffill")
+                    return (series * factor * fx_rate).rename(series.name)
+            except Exception as e:
+                logger.warning(f"Balance sheet FX conversion failed for {ticker}: {e}")
     return series  # already USD or conversion failed
 
 
@@ -249,12 +298,15 @@ def fetch_debt_series(bank: Bank, start: str, end: str) -> pd.Series:
         return pd.Series(dtype=float)
 
     debt_row = debt_row.dropna().sort_index()
-    debt_bn = debt_row / 1e9  # to billions
+    debt_bn = debt_row / 1e9  # to local-currency billions
 
     # Reindex to daily frequency and forward-fill
     idx = pd.date_range(start, end, freq="B")
     daily = debt_bn.reindex(idx.union(debt_bn.index)).sort_index()
     daily = daily.ffill().reindex(idx)
+
+    # Convert from local reporting currency to USD
+    daily = _to_usd_bs(daily, bank.yf_ticker)
     daily.name = f"{bank.id}_debt_usd_bn"
     return daily
 

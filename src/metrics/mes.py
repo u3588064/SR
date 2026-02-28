@@ -10,18 +10,24 @@ MES:
     MES_i = E[r_i | r_m ≤ VaR_c(r_m)]
 
 LRMES (Long-Run MES) — approximation via Brownlees & Engle (2017):
-    Uses a DCC-GARCH-style approximation rather than full simulation:
+    Uses a log-normal / bivariate GBM closed-form approximation:
 
-        LRMES_i ≈ 1 - exp(log(1 - D) * ρ * β_i)
+        LRMES_i ≈ 1 - exp(log(1 - D) * β_i)
 
     where:
-        D   = hypothetical market decline over horizon h (default 40%)
-        ρ   = rolling correlation between r_i and r_m
-        β_i = r_i / r_m regression beta (rolling window)
-        h   = horizon in trading days (default 22 ≈ 1 month)
+        D   = hypothetical cumulative market decline (default 40%)
+        β_i = OLS market beta of bank i vs regional index
+              = Cov(r_i, r_m) / Var(r_m)  [encodes ρ · σ_i/σ_m]
+        h   = implicit horizon encoded in D (default 22 trading days)
 
-    This is a tractable closed-form approximation used widely in
-    empirical systemic risk literature when full DCC-GARCH is impractical.
+    Derivation: under bivariate GBM, E[R_i^h | R_m^h = log(1-D)] ≈ β_OLS · log(1-D),
+    so LRMES = 1 - exp(β_OLS · log(1-D)).  β_OLS already incorporates
+    the correlation ρ (β_OLS = ρ·σ_i/σ_m), so ρ must NOT be multiplied
+    separately, and no √h scaling is applied since D represents the full
+    horizon loss.
+
+    Reference: Brownlees & Engle (2017), "SRISK: A Conditional Capital
+    Shortfall Measure of Systemic Risk", Review of Financial Studies.
 
 Inputs:
     bank_returns  : pd.Series, daily log-returns of bank i
@@ -121,20 +127,25 @@ def calc_lrmes(
     window: int | None = None,
 ) -> float:
     """
-    Compute Long-Run MES approximation.
+    Compute Long-Run MES approximation (Brownlees & Engle 2017).
 
-        LRMES ≈ 1 - exp(log(1 - D) * ρ * β * sqrt(h))
+        LRMES_i ≈ 1 - exp(log(1 - D) * β_OLS)
 
     where:
-        D  = market_drop (40% default)
-        ρ  = Pearson correlation of bank and index returns
-        β  = OLS beta
-        h  = horizon (trading days)
+        D      = market_drop (40% default) — the cumulative crisis loss
+                 that implicitly defines the horizon h
+        β_OLS  = OLS market beta = Cov(r_b, r_m) / Var(r_m)
+                 (already encodes the correlation ρ · σ_i/σ_m)
+
+    Note: β_OLS = ρ · σ_i/σ_m, so ρ must NOT be multiplied separately.
+    The horizon h is implicit in the market_drop parameter and does not
+    appear as an explicit multiplier in the formula.
 
     Args:
         bank_returns  : Daily returns series for the bank.
         index_returns : Daily returns series for the regional index.
-        h             : Horizon in trading days (default cfg.lrmes_h = 22).
+        h             : Horizon in trading days (documents the scenario;
+                        default cfg.lrmes_h = 22). Not used in formula.
         market_drop   : Hypothetical cumulative market decline (default cfg.lrmes_market_drop).
         window        : Look-back window (default cfg.covar_window).
 
@@ -154,18 +165,17 @@ def calc_lrmes(
     r_b = data["bank"].values
     r_m = data["index"].values
 
-    # Beta via OLS
+    # OLS market beta = Cov(r_b, r_m) / Var(r_m)
+    # β_OLS = ρ · σ_b/σ_m, so it already encodes correlation
     cov = np.cov(r_b, r_m)
     var_m = cov[1, 1]
     if var_m == 0:
         return float("nan")
     beta = cov[0, 1] / var_m
 
-    # Pearson correlation
-    rho = np.corrcoef(r_b, r_m)[0, 1]
-
-    # LRMES approximation
-    lrmes = 1 - np.exp(np.log(1 - market_drop) * rho * beta * np.sqrt(h))
+    # LRMES = 1 - exp(log(1-D) * β_OLS)
+    # Correct B&E 2017 formula: no separate ρ factor, no √h scaling
+    lrmes = 1 - np.exp(np.log(1 - market_drop) * beta)
     # Clamp to [0, 1] range — by definition a loss fraction
     return float(np.clip(lrmes, 0.0, 1.0))
 
@@ -197,8 +207,8 @@ def calc_lrmes_rolling(
             results[aligned.index[i]] = float("nan")
             continue
         beta = cov[0, 1] / var_m
-        rho = np.corrcoef(r_b, r_m)[0, 1]
-        val = 1 - np.exp(np.log(1 - market_drop) * rho * beta * np.sqrt(h))
+        # LRMES = 1 - exp(log(1-D) * β_OLS); no separate ρ, no √h
+        val = 1 - np.exp(np.log(1 - market_drop) * beta)
         results[aligned.index[i]] = float(np.clip(val, 0.0, 1.0))
 
     return pd.Series(results, name=f"{bank_returns.name}_lrmes")
