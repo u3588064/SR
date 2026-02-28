@@ -248,6 +248,7 @@ def _tail_adjusted_beta(
     threshold = np.percentile(r_m, tail_pct * 100)
     tail_mask = r_m <= threshold
 
+    # Need enough tail observations for a stable ratio of means
     if tail_mask.sum() < 5:
         return beta_ols
 
