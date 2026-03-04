@@ -1,6 +1,6 @@
 {
   "date": "2026-01-21",
-  "generated_at": "2026-03-03T22:28:31.568963+00:00",
+  "generated_at": "2026-03-04T22:30:19.194989+00:00",
   "methodology_version": "1.0",
   "parameters": {
     "srisk_k": 0.08,
@@ -10,7 +10,7 @@
     "lrmes_market_drop": 0.4,
     "mes_tail_pct": 0.05
   },
-  "system_srisk_usd_bn": 229.1826,
+  "system_srisk_usd_bn": 229.1859,
   "bank_count": 3,
   "banks": [
     {
@@ -22,10 +22,10 @@
       "covar": -0.0151,
       "delta_covar": -0.009041,
       "covar_beta": 0.294138,
-      "srisk_usd_bn": 71.945451,
-      "market_cap_usd_bn": 48.755313,
+      "srisk_usd_bn": 71.948776,
+      "market_cap_usd_bn": 48.744726,
       "debt_usd_bn": 1090.651202,
-      "srisk_share_pct": 31.3922,
+      "srisk_share_pct": 31.3932,
       "bank_id": "BARC"
     },
     {
@@ -37,10 +37,10 @@
       "covar": -0.013788,
       "delta_covar": -0.007706,
       "covar_beta": 0.290693,
-      "srisk_usd_bn": 116.588026,
+      "srisk_usd_bn": 116.588013,
       "market_cap_usd_bn": 157.216613,
       "debt_usd_bn": 2258.438094,
-      "srisk_share_pct": 50.8712,
+      "srisk_share_pct": 50.8705,
       "bank_id": "HSBC"
     },
     {
@@ -55,7 +55,7 @@
       "srisk_usd_bn": 40.649114,
       "market_cap_usd_bn": 30.720667,
       "debt_usd_bn": 643.834551,
-      "srisk_share_pct": 17.7366,
+      "srisk_share_pct": 17.7363,
       "bank_id": "STAN"
     }
   ]
